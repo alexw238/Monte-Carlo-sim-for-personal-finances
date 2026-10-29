@@ -1,5 +1,4 @@
 import copy
-from numbers import Number
 
 class FEQ:
     # A future events queue object to hold future events (lists)
@@ -10,30 +9,31 @@ class FEQ:
 
     # Defines how elements should be added to the FEQ
     def add(self, event):
+
         if isinstance(event, list) and len(event) == 2:
             init_FEQ = self.FEQ
 
             for i in range(len(init_FEQ)):
-
-                # If event i will happen at the same time or after our new event
-                # we put the new event before event i in our list
+                # If event i will happen at the same time or after our new 
+                # event we put the new event before event i in our list. This
+                # ensures our FEQ remains in chronological order
                 if event[1] <= init_FEQ[i][1]:
                     new_FEQ = init_FEQ[:i] + [event] + init_FEQ[i:]
                     self = FEQ(new_FEQ)
                     return self
-                
-                # Does nothing if the time until the event is < the time until
-                # "event i" until i is the last index
-                elif i + 1 == len(init_FEQ):
+
+                # Catches the case where an added event occurs after all 
+                # events in our FEQ
+                elif (i + 1) == len(init_FEQ):
                     new_FEQ = init_FEQ[:(i + 1)] + [event]
                     self = FEQ(new_FEQ)
                     return self
-
 
         else:
             raise TypeError("The added element must be a list [a, b]")
                
     def add_list(self, queue):
+
         # Make sure it's the right syntax
         if isinstance(queue, list):
 
@@ -57,7 +57,8 @@ class FEQ:
         # Define a new queue
         new_q = self.FEQ[1:]
 
-        # Take away the time taken from every item in the new queue
+        # Take away the time taken from every item in the new queue this is so
+        # events still happen at the right time
         for event in new_q:
             event[1] = event[1] - time_taken
 
@@ -67,6 +68,7 @@ class FEQ:
 
 
 if __name__ == '__main__':
+    # Ignore for time being I haven't yet written proper tests
     a = FEQ([[-1, 2], [3, 4], [5, 6]])
     a = a.add([-2, 4])
     a = a.add([-7, 3])
