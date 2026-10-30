@@ -3,16 +3,20 @@ from Classes.FEQ import FEQ
 
 # Define our start conditions
 
-iterate = 10000
+iterate = 1
+
+# Model Conditions
+min_save = 500
+min_balance = 100
 
 # Cash inflow in £s
 ISA = 10000    # Initial value for ISA
 LISA = 0    # Initial value for lifetime ISA
 Ann_LISA_add = 4000    # Annual addition to the lifetime ISA
 prop_gov_LISA_add = 0.25
-savings = 2000    # Value of savings account
+savings = 1000    # Value of savings account
 apr = 0.05    # apr of said savings account
-weekly_income = 80
+weekly_income = 130
 year_loan = 5000    # yearly maintanence loan
 mean_ann_stmkt_return = 0.1
 sd_ann_stmkt_return = 0.13
@@ -20,8 +24,8 @@ init_balance = 2000    # Initial current account balance
 
 # Cash outflow in £s
 fee_loan = 9500    # Student fee loan
-mean_weekly_spend = 200
-sd_weekly_spend = 8
+mean_weekly_spend = 800
+sd_weekly_spend = 10
 annual_rent = 10500    # Cost of annual rent
 loan_interest = 0.05    # Interest on student loans
 
@@ -34,114 +38,155 @@ no_weeks = 156 # Number of weeks to simulate
 np.random.seed(28907314)
 
 # Creates list for all the outputs of the monte carlo sim
-potential_money = []
+potential_ISA = []
+potential_LISA = []
+potential_bal = []
+potential_sav = []
+potential_total = []
 
+# Finds final value of the loan
+loan_val = [[0, 0]]
+
+for j in range(52, no_weeks + 1, 52):
+    loan_val.append([
+        np.round(
+            loan_val[-1][0] - 
+            (
+                ((-1) *
+                loan_interest * 
+                loan_val[-1][0]
+            ) +
+            fee_loan +
+            year_loan
+            ), 
+        2),
+    j
+    ])
 
 for i in range(iterate):
 
-    # Sets up initial future events queue to be added to must be setup fresh
-    # for each simulation because feq_i is not reset with each loop
-    feq_i = FEQ([[ISA +
-                    LISA +
-                    savings +
-                    init_balance, 0]])
-
-    # Sets up all the lists of event's in the right format
-    week_spends = [[0, 0]]
-    week_in = [[0, 0]]
-    ISA_changes = [[0, 0]]
-    ISA_value = [ISA]    # Keeps track of ISA value
-    LISA_changes = [[0, 0]]
-    LISA_value = [LISA]    # Keeps track of LISA value
+    # Sets up all the initial states of the simulation
+    balance = [[init_balance, 0]]
+    ISA_value = [[ISA, 0]]
+    LISA_value = [[LISA, 0]]   
     rent_bills = [[0, 0]]
-    saved_money = [[0, 0]]
-    loan_take_out = [[0, 0]] # Money in from taking out a loan
-    loan_fees = [[(-1) * (fee_loan + year_loan), 0]]
-    loan_value = [0]    # Keeps track of loan value
+    saved_money = [[savings, 0]]
 
     for j in range(1, no_weeks + 1):
         ######################################################################
         # Calculates weekly in and outflow and makes events for them         #
         ######################################################################
 
-        week_spends.append([((-1) * np.random.normal(mean_weekly_spend,
-                                            (sd_weekly_spend ** 2)
-                                            )),
-                                            j]
-                                            )
-        
-        week_in.append([weekly_income, j])
+        # Work out balance changes for week
+        balance.append([
+            (np.round(
+                balance[-1][0] -
+                np.random.normal(
+                    mean_weekly_spend,
+                    (sd_weekly_spend ** 2)
+                ),
+            2)
+            ),
+            j
+        ])
+                                            
+        balance.append([
+            np.round(
+                balance[-1][0] + 
+                weekly_income,
+                2), 
+            j
+        ])
 
-    for j in range(13, no_weeks + 1, 13):
-        ######################################################################
-        # Calculates everything that is factored in quarterly and makes an   #
-        # Event for each quarter                                             #
-        ######################################################################
-        
-        # Find new ISA total from changes
-        ISA_value.append(ISA_value[-1] + ISA_changes[-1][0])
+        if j in range(13, no_weeks + 1, 13):
+            
+            rent_bills.append([annual_rent / 4, j])
+            balance.append([np.round(balance[-1][0] - rent_bills[-1][0], 2),
+                             j])
 
-        # add the change in ISA value to the FEQ to track gain / loss
-        ISA_changes.append([(np.random.normal(mean_ann_stmkt_return,
-                                            (sd_ann_stmkt_return ** 2) /
-                            4)) *
-                            ISA_value[-1],
-                            j]
-                            )
+            if j not in range(52, no_weeks + 1, 52):
+                balance.append([np.round(balance[-1][0] + year_loan / 3, 2),
+                                 j])
 
-        # Same process as ISA values
-        LISA_value.append(LISA_value[-1] + LISA_changes[-1][0])
-        
-        LISA_changes.append([(prop_gov_LISA_add + 
+        # Account for taking money from savings
+        if balance[-1][0] <= min_balance:
+            take_from_sav = min_balance - balance[-1][0]
+            saved_money.append([saved_money[-1][0] - take_from_sav, j])
+            balance.append([(balance[-1][0] + take_from_sav), j])
+
+        if saved_money[-1][0] <= min_save:
+            take_from_ISA = min_save - saved_money[-1][0]
+            ISA_value.append([ISA_value[-1][0] - take_from_ISA, j])
+            saved_money.append([(saved_money[-1][0] + take_from_ISA), j])
+
+        # ISA and savings both must not go negative
+        if ISA_value[-1][0] <= 0:
+            lost_money = 0 - ISA_value[-1][0]
+            ISA_value.append([0, j])
+            saved_money.append([saved_money[-1][0] - lost_money, j])
+
+            if saved_money[-1][0] <= 0:
+                lost_money = 0 - saved_money[-1][0]
+                saved_money.append([0, j])
+                balance.append([balance[-1][0] - lost_money, j])
+
+        # Apply interest
+        saved_money.append([np.round(saved_money[-1][0] * (1 + apr / 52), 2),
+                            j])
+        ISA_value.append([
+            np.round(
+                ISA_value[-1][0] *
+                (
+                1 + 
+                np.random.normal(
+                    mean_ann_stmkt_return, 
+                    sd_ann_stmkt_return ** 2
+                    ) / 52
+                ),
+            2),
+            j
+        ])
+
+        if j in range(52, no_weeks + 1, 52):
+
+            # Here I'll look at things that don't have balance changed weekly
+            # and are effectively untouched in our time period 
+
+            LISA_value.append([np.round(
+                            (LISA_value[-1][0] +
+                               Ann_LISA_add
+                            ) *
+                               (
+                                1 +
+                                prop_gov_LISA_add +
                                 np.random.normal(mean_ann_stmkt_return,
-                                            (sd_ann_stmkt_return ** 2)) /
-                                4) *
-                            LISA_value[-1] +
-                            Ann_LISA_add / 4,
-                            j]
-                            )
-
-        rent_bills.append([(-1) * annual_rent / 4, j])
-
-        saved_money.append([savings * (1 + (apr / 4)), j])
-
-        loan_take_out.append([year_loan / 4, j])
-
-    for j in range(52, no_weeks + 1, 52):
-
-        # Similar to ISAs tracks current loan value for interest purposes
-        loan_value.append(loan_value[-1] + 
-                          (-1) * loan_fees[-1][0] 
-        )
-        
-        # Calculates loan_fees yearly and makes an event for each change
-        loan_fees.append([(-1) *
-                          (
-                          loan_interest * 
-                          loan_value[-1] +
-                          fee_loan +
-                          year_loan
-                          ),
-                          j])
+                                                sd_ann_stmkt_return ** 2
+                                            )
+                               ),
+                            2),
+                        j
+                    ])
     
-    # Adds all the events we just created to our queue
-    feq_i = feq_i.add_list(week_spends)
-    feq_i = feq_i.add_list(saved_money)
-    feq_i = feq_i.add_list(week_in)
-    feq_i = feq_i.add_list(ISA_changes)
-    feq_i = feq_i.add_list(LISA_changes)
-    feq_i = feq_i.add_list(rent_bills)
-    feq_i = feq_i.add_list(loan_take_out)
-    feq_i = feq_i.add_list(loan_fees)
+    potential_ISA.append(ISA_value[-1])
+    potential_LISA.append(LISA_value[-1])
+    potential_bal.append(balance[-1])
+    potential_sav.append(saved_money[-1])
+    potential_total.append(sum([
+        potential_ISA[-1][0],
+        potential_LISA[-1][0],
+        potential_bal[-1][0],
+        potential_sav[-1][0],
+    ]))
 
-    # Gets initial value for total money
-    money = 0
 
-    # Calculates money after each event happens leaving a final total
-    for event in feq_i.FEQ:
-        money = money + feq_i.FEQ[0][0]
-        feq_i = feq_i.GoToNext()[0]
-    
-    potential_money.append(money)
+print(
+    np.round(np.mean(potential_total), 2), 
+    np.round(np.max(potential_total), 2), 
+    np.round(np.min(potential_total), 2), 
+    np.round(np.mean(potential_sav), 2), 
+    np.round(np.mean(potential_LISA), 2), 
+    np.round(np.mean(potential_ISA),2), 
+    np.round(np.mean(potential_bal), 2), 
+    loan_val[-1]
+    )
 
-print(max(potential_money), min(potential_money), np.mean(potential_money))

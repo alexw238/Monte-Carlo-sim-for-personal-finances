@@ -8,30 +8,43 @@ class FEQ:
         self.FEQ = events
 
     # Defines how elements should be added to the FEQ
-    def add(self, event):
+    def __add__(self, event):
 
+        # Add command otherwise cannot handle empty lists
+
+        # Main addition 
         if isinstance(event, list) and len(event) == 2:
-            init_FEQ = self.FEQ
 
-            for i in range(len(init_FEQ)):
+            init_feq = self.FEQ
+
+            # Defines adding for empty FEQs
+            if init_feq == []:
+                self = [event]
+                return self
+            
+            for i in range(len(init_feq)):
                 # If event i will happen at the same time or after our new 
                 # event we put the new event before event i in our list. This
                 # ensures our FEQ remains in chronological order
-                if event[1] <= init_FEQ[i][1]:
-                    new_FEQ = init_FEQ[:i] + [event] + init_FEQ[i:]
-                    self = FEQ(new_FEQ)
+                if event[1] <= init_feq[i][1]:
+                    new_feq = init_feq[:i] + [event] + init_feq[i:]
+                    self = FEQ(new_feq)
                     return self
 
                 # Catches the case where an added event occurs after all 
                 # events in our FEQ
-                elif (i + 1) == len(init_FEQ):
-                    new_FEQ = init_FEQ[:(i + 1)] + [event]
-                    self = FEQ(new_FEQ)
+                elif (i + 1) == len(init_feq):
+                    new_FEQ = init_feq[:(i + 1)] + [event]
+                    self = FEQ(new_feq)
                     return self
 
         else:
             raise TypeError("The added element must be a list [a, b]")
-               
+
+    def __radd__(self, other):
+        raise SyntaxError("FEQ's are only compatible with left addition of "
+                          "lists")
+
     def add_list(self, queue):
 
         # Make sure it's the right syntax
