@@ -1,192 +1,165 @@
 import numpy as np
-from Classes.FEQ import FEQ 
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+import functions.Monte_Carlo as MC
 
 # Define our start conditions
+Config = {
+    "iterate": 1000, # number of iterations for the monte carlo simulation
+    
+    # Sets up our balance params
+    "init_balance": 2000,
+    "min_balance": 100,
+    "max_bal": 500,
 
-iterate = 1
+    # Sets up ISA related params
+    "ISA": 10000,
+    "LISA": 0,
+    "Ann_LISA_add": 4000,
+    "prop_gov_LISA_add": 0.25,
+    "mean_ann_stmkt_return": 0.1,
+    "sd_ann_stmkt_return": 0.13,
 
-# Model Conditions
-min_save = 500
-min_balance = 100
+    # Sets up savings account params
+    "savings": 1000,
+    "min_save": 500,
+    "apr": 0.05,
 
-# Cash inflow in £s
-ISA = 10000    # Initial value for ISA
-LISA = 0    # Initial value for lifetime ISA
-Ann_LISA_add = 4000    # Annual addition to the lifetime ISA
-prop_gov_LISA_add = 0.25
-savings = 1000    # Value of savings account
-apr = 0.05    # apr of said savings account
-weekly_income = 130
-year_loan = 5000    # yearly maintanence loan
-mean_ann_stmkt_return = 0.1
-sd_ann_stmkt_return = 0.13
-init_balance = 2000    # Initial current account balance
+    # Sets up income params
+    "mean_weekly_income": 200,
+    "sd_weekly_income": 15,
 
-# Cash outflow in £s
-fee_loan = 9500    # Student fee loan
-mean_weekly_spend = 800
-sd_weekly_spend = 10
-annual_rent = 10500    # Cost of annual rent
-loan_interest = 0.05    # Interest on student loans
+    # Sets up loan params
+    "year_loan": 5000,
+    "fee_loan": 9500,
+    "loan_interest": 0.05,
 
-no_weeks = 156 # Number of weeks to simulate
+    # Sets up weekly spending params
+    "mean_weekly_spend": 200,
+    "sd_weekly_spend": 30,
+
+    # Defines our annual rent
+    "annual_rent": 10500,
+
+    # Sets number of weeks to simulate
+    "no_weeks": 156,
+
+    #Placement year params (don't touch "Placement year": False)
+    "Placement year": False,
+    "Placement year Start week": 52,
+    "Placement year Salary": 25000,
+    "Placement year Fee loan": 3400,
+}
 
 ##############################################################################
 # main - time unit is weeks                                                  #
 ##############################################################################
 
+# Set the random seed 
 np.random.seed(28907314)
 
-# Creates list for all the outputs of the monte carlo sim
-potential_ISA = []
-potential_LISA = []
-potential_bal = []
-potential_sav = []
-potential_total = []
+# run the monte carlo simulation for placement year/ no placement year
+sims, mean_vector, interval_95, loan_val = MC.MonteCarlo(Config)
 
-# Finds final value of the loan
-loan_val = [[0, 0]]
+Config["Placement year"] = True
 
-for j in range(52, no_weeks + 1, 52):
-    loan_val.append([
-        np.round(
-            loan_val[-1][0] - 
-            (
-                ((-1) *
-                loan_interest * 
-                loan_val[-1][0]
-            ) +
-            fee_loan +
-            year_loan
-            ), 
-        2),
-    j
-    ])
+sims_2, mean_vector_2, interval_95_2, loan_val_2 = MC.MonteCarlo(Config)
 
-for i in range(iterate):
+# print the total loan value at the end of the simulation
+print(f"loan value (no Placement) at week" 
+      f"{Config['no_weeks']}: {loan_val[-1][0]}"
+      )
 
-    # Sets up all the initial states of the simulation
-    balance = [[init_balance, 0]]
-    ISA_value = [[ISA, 0]]
-    LISA_value = [[LISA, 0]]   
-    rent_bills = [[0, 0]]
-    saved_money = [[savings, 0]]
-
-    for j in range(1, no_weeks + 1):
-        ######################################################################
-        # Calculates weekly in and outflow and makes events for them         #
-        ######################################################################
-
-        # Work out balance changes for week
-        balance.append([
-            (np.round(
-                balance[-1][0] -
-                np.random.normal(
-                    mean_weekly_spend,
-                    (sd_weekly_spend ** 2)
-                ),
-            2)
-            ),
-            j
-        ])
-                                            
-        balance.append([
-            np.round(
-                balance[-1][0] + 
-                weekly_income,
-                2), 
-            j
-        ])
-
-        if j in range(13, no_weeks + 1, 13):
-            
-            rent_bills.append([annual_rent / 4, j])
-            balance.append([np.round(balance[-1][0] - rent_bills[-1][0], 2),
-                             j])
-
-            if j not in range(52, no_weeks + 1, 52):
-                balance.append([np.round(balance[-1][0] + year_loan / 3, 2),
-                                 j])
-
-        # Account for taking money from savings
-        if balance[-1][0] <= min_balance:
-            take_from_sav = min_balance - balance[-1][0]
-            saved_money.append([saved_money[-1][0] - take_from_sav, j])
-            balance.append([(balance[-1][0] + take_from_sav), j])
-
-        if saved_money[-1][0] <= min_save:
-            take_from_ISA = min_save - saved_money[-1][0]
-            ISA_value.append([ISA_value[-1][0] - take_from_ISA, j])
-            saved_money.append([(saved_money[-1][0] + take_from_ISA), j])
-
-        # ISA and savings both must not go negative
-        if ISA_value[-1][0] <= 0:
-            lost_money = 0 - ISA_value[-1][0]
-            ISA_value.append([0, j])
-            saved_money.append([saved_money[-1][0] - lost_money, j])
-
-            if saved_money[-1][0] <= 0:
-                lost_money = 0 - saved_money[-1][0]
-                saved_money.append([0, j])
-                balance.append([balance[-1][0] - lost_money, j])
-
-        # Apply interest
-        saved_money.append([np.round(saved_money[-1][0] * (1 + apr / 52), 2),
-                            j])
-        ISA_value.append([
-            np.round(
-                ISA_value[-1][0] *
-                (
-                1 + 
-                np.random.normal(
-                    mean_ann_stmkt_return, 
-                    sd_ann_stmkt_return ** 2
-                    ) / 52
-                ),
-            2),
-            j
-        ])
-
-        if j in range(52, no_weeks + 1, 52):
-
-            # Here I'll look at things that don't have balance changed weekly
-            # and are effectively untouched in our time period 
-
-            LISA_value.append([np.round(
-                            (LISA_value[-1][0] +
-                               Ann_LISA_add
-                            ) *
-                               (
-                                1 +
-                                prop_gov_LISA_add +
-                                np.random.normal(mean_ann_stmkt_return,
-                                                sd_ann_stmkt_return ** 2
-                                            )
-                               ),
-                            2),
-                        j
-                    ])
-    
-    potential_ISA.append(ISA_value[-1])
-    potential_LISA.append(LISA_value[-1])
-    potential_bal.append(balance[-1])
-    potential_sav.append(saved_money[-1])
-    potential_total.append(sum([
-        potential_ISA[-1][0],
-        potential_LISA[-1][0],
-        potential_bal[-1][0],
-        potential_sav[-1][0],
-    ]))
+print(f"loan value (Placement) at week" 
+      f"{Config['no_weeks']}: {loan_val_2[-1][0]}"
+      )
 
 
-print(
-    np.round(np.mean(potential_total), 2), 
-    np.round(np.max(potential_total), 2), 
-    np.round(np.min(potential_total), 2), 
-    np.round(np.mean(potential_sav), 2), 
-    np.round(np.mean(potential_LISA), 2), 
-    np.round(np.mean(potential_ISA),2), 
-    np.round(np.mean(potential_bal), 2), 
-    loan_val[-1]
-    )
+# Plotting graphs
+fig1 = plt.figure(figsize=(10, 8))  # makes figure with size 10 by 8 inches
 
+# Set up the grid for the subplots making row 1 smaller than row 2
+gs = gridspec.GridSpec(2, 2, height_ratios=[5, 7])
+
+# Add subplots to the grid in our figure
+ax1 = fig1.add_subplot(gs[0, 0])
+ax2 = fig1.add_subplot(gs[0, 1])
+ax3 = fig1.add_subplot(gs[1, :]) # makes a big 3rd plot on bottom row
+
+ax1.set_title("Plot of total balance with time no Placement")
+
+ax1.set_xlim(0, Config["no_weeks"])
+
+# Plot the 95% confidence interval and mean for the first simulation
+ax1.fill_between(np.arange(1, Config["no_weeks"]), 
+                 interval_95[0, 1:],
+                 interval_95[1, 1:], 
+                 alpha=0.3,
+                 color = "blue"
+                 )
+# Plot the mean for the first simulation
+ax1.plot(np.arange(1, Config["no_weeks"]),
+          mean_vector[1:],
+          color = "navy"
+         )
+
+ax1.set_xlabel("Weeks")
+ax1.set_ylabel("Total balance (£)")
+ax1.legend(["95%" " confidence interval", "Mean"])
+
+
+ax2.set_title("Plot of total balance with time Placement")
+
+ax2.set_xlim(0, Config["no_weeks"])
+
+# Plot the 95% confidence interval and mean for the second simulation
+ax2.fill_between(np.arange(1, Config["no_weeks"]), 
+                 interval_95_2[0, 1:],
+                 interval_95_2[1, 1:], 
+                 alpha=0.3,
+                 color = "orange"
+                 )
+# Plot the mean for the second simulation
+ax2.plot(np.arange(1, Config["no_weeks"]), 
+         mean_vector_2[1:],
+         color = "darkorange"
+         )
+
+ax2.set_xlabel("Weeks")
+ax2.set_ylabel("Total balance (£)")
+ax2.legend(["95%" " confidence interval", "Mean"])
+
+
+ax3.set_title("Plot of total balance with time Placement and no Placement")
+
+ax3.set_xlim(0, Config["no_weeks"])
+
+#plot the 95% confidence interval and mean for both simulations on same graph
+ax3.fill_between(np.arange(1, Config["no_weeks"]), 
+                 interval_95[0, 1:],
+                 interval_95[1, 1:], 
+                 alpha=0.3,
+                 color = "blue"
+                 )
+ax3.fill_between(np.arange(1, Config["no_weeks"]), 
+                 interval_95_2[0, 1:],
+                 interval_95_2[1, 1:], 
+                 alpha=0.3,
+                 color = "orange"
+                 )
+
+line1 =ax3.plot(np.arange(1, Config["no_weeks"]),
+          mean_vector[1:],
+          color = "navy"
+         )
+line2 = ax3.plot(np.arange(1, Config["no_weeks"]), 
+         mean_vector_2[1:],
+         color = "darkorange"
+         )
+
+ax3.set_xlabel("Weeks")
+ax3.set_ylabel("Total balance (£)")
+ax3.legend([line1[0], line2[0]], ["No Placement", "Placement"])
+
+fig1.tight_layout()
+plt.show()
